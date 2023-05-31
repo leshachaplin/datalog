@@ -5,9 +5,3 @@ run-clickhouse:
 stop-clickhouse:
 	docker stop clickhouse-server
 	docker rm clickhouse-server
-
-#
-#migrate-up:
-#	migrate -path /Users/alexeychaplin/GolandProjects/datalog/assets/migrations -database 'clickhouse://localhost:18123/test_db?username=su&password=su' -verbose up
-#
-#migrate-down:

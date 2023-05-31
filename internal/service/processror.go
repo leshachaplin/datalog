@@ -8,7 +8,7 @@ import (
 )
 
 type Storage interface {
-	StoreEvents(ctx context.Context, event domain.EventBatch) error
+	StoreEvents(ctx context.Context, events []domain.Event) error
 }
 
 type Processor interface {

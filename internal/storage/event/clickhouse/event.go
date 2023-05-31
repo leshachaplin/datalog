@@ -6,7 +6,7 @@ import (
 	"github.com/leshachaplin/datalog/internal/domain"
 )
 
-func (c *Clickhouse) StoreEvents(ctx context.Context, events domain.EventBatch) error {
+func (c *Clickhouse) StoreEvents(ctx context.Context, events []domain.Event) error {
 	eBatch := eventFromService(events)
 
 	batch, err := c.conn.PrepareBatch(ctx, `INSERT INTO events`)

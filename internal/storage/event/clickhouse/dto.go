@@ -23,20 +23,20 @@ type event struct {
 	ParamStr   string `ch:"param_str"`
 }
 
-func eventFromService(batch domain.EventBatch) eventBatch {
-	events := make([]event, len(batch.Events))
-	for i := 0; i < len(batch.Events); i++ {
+func eventFromService(evnts []domain.Event) eventBatch {
+	events := make([]event, len(evnts))
+	for i := 0; i < len(events); i++ {
 		events[i] = event{
-			IP:         batch.Events[i].IP,
-			ServerTime: batch.Events[i].ServerTime.Format(time.DateTime),
-			ClientTime: batch.Events[i].ClientTime,
-			DeviceID:   batch.Events[i].DeviceID,
-			DeviceOS:   batch.Events[i].DeviceOS,
-			Session:    batch.Events[i].Session,
-			Sequence:   int16(batch.Events[i].Sequence),
-			EventType:  batch.Events[i].Event,
-			ParamsInt:  int32(batch.Events[i].ParamInt),
-			ParamStr:   batch.Events[i].ParamStr,
+			IP:         evnts[i].IP,
+			ServerTime: evnts[i].ServerTime.Format(time.DateTime),
+			ClientTime: evnts[i].ClientTime,
+			DeviceID:   evnts[i].DeviceID,
+			DeviceOS:   evnts[i].DeviceOS,
+			Session:    evnts[i].Session,
+			Sequence:   int16(evnts[i].Sequence),
+			EventType:  evnts[i].Event,
+			ParamsInt:  int32(evnts[i].ParamInt),
+			ParamStr:   evnts[i].ParamStr,
 		}
 	}
 	return eventBatch{

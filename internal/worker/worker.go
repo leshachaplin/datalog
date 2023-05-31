@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
@@ -13,29 +14,31 @@ import (
 )
 
 type WorkerPool interface {
-	Start(executeFn func(ctx context.Context, batch domain.EventBatch) error)
+	Start(executeFn func(ctx context.Context, batch []domain.Event) error)
 	GracefulStop()
 	Process(payload domain.EventBatch)
 	onFailure(payload domain.EventBatch, err error)
 }
 
 type Pool struct {
-	numWorkers  int
-	taskPayload chan domain.EventBatch
-	queue       Queue
-	errorQueue  Queue
-	start       sync.Once
-	stop        sync.Once
-	doneChan    chan struct{}
-	ctx         context.Context //TODO: maybe make some wrapper func for getting context
-	cancelFn    context.CancelFunc
-	wg          *sync.WaitGroup
-	logger      zerolog.Logger
+	numWorkers       int
+	batchSize        int
+	maxBatchCapacity int
+	taskPayload      chan domain.EventBatch
+	queue            Queue
+	errorQueue       Queue
+	start            sync.Once
+	stop             sync.Once
+	doneChan         chan struct{}
+	ctx              context.Context //TODO: maybe make some wrapper func for getting context
+	cancelFn         context.CancelFunc
+	wg               *sync.WaitGroup
+	logger           zerolog.Logger
 }
 
 func New(ctx context.Context, cfg Config, queue Queue, logger zerolog.Logger) *Pool {
 	c, cancelFn := context.WithCancel(ctx)
-	return &Pool{
+	pool := Pool{
 		numWorkers:  cfg.NumWorkers,
 		taskPayload: make(chan domain.EventBatch, cfg.NumWorkers),
 		doneChan:    make(chan struct{}),
@@ -45,10 +48,17 @@ func New(ctx context.Context, cfg Config, queue Queue, logger zerolog.Logger) *P
 		wg:          &sync.WaitGroup{},
 		logger:      logger,
 	}
+	if cfg.BatchSize <= 1 {
+		pool.batchSize = 1000
+	}
+	if cfg.MaxBatchCapacity < 30 {
+		pool.maxBatchCapacity = 30
+	}
+	return &pool
 }
 
 func (w *Pool) Start(
-	executeFn func(ctx context.Context, eventBatch domain.EventBatch) error,
+	executeFn func(ctx context.Context, eventBatch []domain.Event) error,
 ) {
 	w.start.Do(func() {
 		for i := 0; i < w.numWorkers; i++ {
@@ -70,7 +80,7 @@ func (w *Pool) GracefulStop() {
 }
 
 func (w *Pool) Process(eventBatch domain.EventBatch) {
-	if err := w.queue.Publish(w.ctx, eventBatch.ID, eventBatch); err != nil {
+	if err := w.queue.Publish(w.ctx, uuid.NewString(), eventBatch); err != nil {
 		w.onFailure(eventBatch, err)
 	}
 }
@@ -89,9 +99,24 @@ func (w *Pool) onFailure(eventBatch domain.EventBatch, err error) {
 func (w *Pool) work(
 	ctx context.Context,
 	logger zerolog.Logger,
-	executeFn func(ctx context.Context, eventBatch domain.EventBatch) error,
+	executeFn func(ctx context.Context, eventBatch []domain.Event) error,
 ) {
 	defer w.wg.Done()
+	batch := make([]domain.Event, 0, w.batchSize)
+	batchID := uuid.NewString()
+	defer func() {
+		if len(batch) > 0 {
+			logger.Debug().Interface("EVENTS", batch).Msg("start processing events")
+			if err := executeFn(context.Background(), batch); err != nil {
+				w.onFailure(domain.EventBatch{
+					ID:     batchID,
+					Events: batch,
+				}, err)
+			}
+			logger.Debug().Str("EVENTS", "end processing events").Send()
+			batch = nil
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -103,11 +128,21 @@ func (w *Pool) work(
 				return
 			}
 
-			logger.Debug().Str("BATCH_ID", pld.ID).Interface("EVENTS", pld.Events).Msg("start processing events")
-			if err := executeFn(ctx, pld); err != nil {
-				w.onFailure(pld, err)
+			batch = append(batch, pld.Events...)
+			if len(batch) >= 1000 {
+				logger.Debug().Str("BATCH_ID", pld.ID).Interface("EVENTS", pld.Events).Msg("start processing events")
+				if err := executeFn(context.Background(), pld.Events); err != nil {
+					w.onFailure(pld, err)
+				}
+				batchID = pld.ID
+				logger.Debug().Str("BATCH_ID", pld.ID).Msg("end processing events")
+				if w.maxBatchCapacity > cap(batch) {
+					batch = nil
+					batch = make([]domain.Event, 0, w.batchSize)
+				} else {
+					batch = batch[:0]
+				}
 			}
-			logger.Debug().Str("BATCH_ID", pld.ID).Msg("end processing events")
 		}
 	}
 }

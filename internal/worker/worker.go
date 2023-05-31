@@ -85,6 +85,7 @@ func (w *Pool) onFailure(eventBatch domain.EventBatch, err error) {
 	}
 }
 
+// TODO: сделать так чтобы батчи собирались в фиксированный размер из конфига - минимум 1000
 func (w *Pool) work(
 	ctx context.Context,
 	logger zerolog.Logger,

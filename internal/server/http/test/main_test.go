@@ -152,7 +152,7 @@ func (i *IntegrationTestSuite) TearDownSuite() {
 	i.cancelFn()
 	i.wg.Wait()
 	err := i.redpandaContainer.Purge()
-	//err = i.clickhouseContainer.Purge()
+	err = i.clickhouseContainer.Purge()
 	i.Assert().NoError(err)
 }
 
